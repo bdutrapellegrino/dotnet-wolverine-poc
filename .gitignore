@@ -1,0 +1,21 @@
+## .NET build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+
+## Wolverine / JasperFx generated code
+Internal/Generated/
+
+## Rider / VS / VS Code
+.idea/
+.vs/
+.vscode/
+
+## macOS
+.DS_Store
+
+## User secrets / local env
+secrets.json
+*.local.json

@@ -1,0 +1,42 @@
+@host = http://localhost:5153
+
+### Create a todo (201 Created)
+POST {{host}}/api/todos
+Content-Type: application/json
+
+{
+  "title": "Comprar café",
+  "description": "moído, 500g"
+}
+
+### Create - invalid (400 ProblemDetails via FluentValidation)
+POST {{host}}/api/todos
+Content-Type: application/json
+
+{
+  "title": ""
+}
+
+### List all
+GET {{host}}/api/todos
+
+### List only completed
+GET {{host}}/api/todos?status=Completed
+
+### Get by id (replace the id)
+GET {{host}}/api/todos/00000000-0000-0000-0000-000000000000
+
+### Update (replace the id)
+PUT {{host}}/api/todos/00000000-0000-0000-0000-000000000000
+Content-Type: application/json
+
+{
+  "title": "Comprar café especial",
+  "description": "grãos"
+}
+
+### Complete (replace the id)
+POST {{host}}/api/todos/00000000-0000-0000-0000-000000000000/complete
+
+### Delete (replace the id)
+DELETE {{host}}/api/todos/00000000-0000-0000-0000-000000000000
