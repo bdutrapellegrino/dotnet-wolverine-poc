@@ -7,11 +7,11 @@ using TodoApp.Api.Auth;
 using TodoApp.Application;
 using TodoApp.Infrastructure;
 using TodoApp.Infrastructure.Persistence;
+using TodoApp.Api;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.FluentValidation;
 using Wolverine.Http;
-using Wolverine.Http.FluentValidation;
 using Wolverine.Postgresql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -56,10 +56,13 @@ builder.Services.AddInfrastructure();
 // Create Wolverine's message storage tables (and other stateful resources) on startup.
 builder.Services.AddResourceSetupOnStartup();
 
-// Request validators live in the API assembly (validated at the HTTP boundary, FastEndpoints-style);
-// command validators live in the Application assembly (validated on the message bus).
-builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+// Single source of validation: the command validators in the Application assembly, run by
+// Wolverine's message middleware. Failures surface as 400 via ValidationExceptionHandler.
 builder.Services.AddValidatorsFromAssemblyContaining<AssemblyMarker>();
+
+// Map FluentValidation.ValidationException (thrown by the bus) to 400 ProblemDetails.
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
 
 // Wolverine.Http endpoint support.
 builder.Services.AddWolverineHttp();
@@ -78,6 +81,9 @@ using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<TodoDbContext>().Database.MigrateAsync();
 }
 
+// Turns FluentValidation.ValidationException (from the bus) into 400 ProblemDetails.
+app.UseExceptionHandler();
+
 app.UseTodoAuthentication();
 
 app.MapOpenApi();
@@ -85,9 +91,6 @@ app.MapScalarApiReference();
 
 app.MapWolverineEndpoints(opts =>
 {
-    // Validate HTTP request bodies (the commands) with FluentValidation -> 400 ProblemDetails.
-    opts.UseFluentValidationProblemDetailMiddleware();
-
     // Answer 400 ProblemDetails for unparseable query values (MVC/minimal-API parity).
     opts.RejectUnparseableQueryValues = true;
 

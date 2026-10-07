@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using TodoApp.Api.Features.Todos.Contracts;
 using TodoApp.Application.Todos.Contracts;
 using TodoApp.Application.Todos.UpdateTodo;
@@ -14,6 +15,7 @@ namespace TodoApp.Api.Features.Todos.UpdateTodo;
 public static class UpdateTodoEndpoint
 {
     [WolverinePut("/api/todos/{id}")]
+    [ProducesResponseType<HttpValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     public static async Task<IResult> Handle(
         Guid id,
         UpdateTodoRequest request,

@@ -1,13 +1,13 @@
 # TodoApp — POC .NET 10 + CQRS + Wolverine
 
 API de Todo List demonstrando **Wolverine** (mensageria/CQRS) + **Wolverine.Http**
-(endpoints HTTP) + **FluentValidation** (validação na borda) + **EF Core/Postgres**
+(endpoints HTTP) + **FluentValidation** (validação no command, via message bus) + **EF Core/Postgres**
 com a **integração de durabilidade do Wolverine** (outbox transacional), numa arquitetura
 em camadas `Domain → Application → Infrastructure → Api`.
 
 Os endpoints seguem um estilo parecido com o do **FastEndpoints**: uma pasta por endpoint
-com `Request` / `Response` / `Validator` na API; a orquestração vive em handlers de
-caso de uso na camada Application, despachados via `IMessageBus`.
+com `Request` / `Response` na API; a orquestração e a **validação** vivem na camada
+Application (handlers de caso de uso + validators de command), despachados via `IMessageBus`.
 
 ## Stack
 
@@ -64,9 +64,10 @@ src/
     Auth/AuthenticationSetup.cs  #   scaffolding OAuth (JWT Bearer) — DESLIGADO por padrão
     Features/Todos/
       Contracts/TodoResponse.cs  #   contrato HTTP de SAÍDA (normalizado na API)
-      CreateTodo/                #   Endpoint + Request + Validator (COM body)
-      UpdateTodo/                #   Endpoint + Request + Validator (COM body)
+      CreateTodo/                #   Endpoint + Request (COM body) — validação fica no command
+      UpdateTodo/                #   Endpoint + Request (COM body)
       GetTodo/ ListTodos/ CompleteTodo/ DeleteTodo/   # só Endpoint (SEM body)
+    ValidationExceptionHandler.cs #  ValidationException (do bus) -> 400 ProblemDetails
 tests/
   TodoApp.Tests/                 # xUnit: domínio (puro) + integração (Alba + Testcontainers)
 ```
@@ -111,8 +112,9 @@ dotnet test
 
 ```
 POST /api/todos  (body = CreateTodoRequest)
-   │  UseFluentValidationProblemDetailMiddleware → CreateTodoValidator → 400 na borda
    ▼  Endpoint mapeia Request → CreateTodoCommand e chama bus.InvokeAsync
+   │  Wolverine: UseFluentValidation → CreateTodoCommandValidator
+   │     inválido → ValidationException → ValidationExceptionHandler → 400 ProblemDetails
    ▼  CreateTodoHandler (Application): db.Todos.Add(...)  — NÃO chama SaveChanges
    ▼  Wolverine: SaveChangesAsync + flush do outbox (AutoApplyTransactions)
    ▼  Endpoint mapeia TodoDto → TodoResponse  → 201
@@ -121,12 +123,16 @@ POST /api/todos  (body = CreateTodoRequest)
 ## Padrões demonstrados
 
 - **Endpoint estilo FastEndpoints**: cada endpoint tem sua pasta em `Features/Todos/<Feature>/`.
-  Com body ⇒ `Endpoint` + `Request` + `Validator`; sem body ⇒ só o `Endpoint`.
-- **Validação na borda da API**: `opts.UseFluentValidationProblemDetailMiddleware()` valida o
-  `Request` e devolve **400 ProblemDetails** antes de despachar o command.
-- **CQRS via IMessageBus**: endpoints finos mapeiam `Request → Command/Query` e despacham
-  pro Wolverine; a orquestração vive nos handlers da Application. Entrada e saída são
+  Com body ⇒ `Endpoint` + `Request`; sem body ⇒ só o `Endpoint`. Entrada e saída são
   normalizadas na API (`Request`/`Response`), distintas do `TodoDto` do caso de uso.
+- **Validação de fonte única (no command)**: os validators vivem na Application
+  (`CreateTodoCommandValidator`, ...) e rodam como middleware do Wolverine (`opts.UseFluentValidation()`)
+  em **todo** dispatch pelo `IMessageBus` — HTTP, fila, cron, testes. No HTTP, o
+  `ValidationExceptionHandler` traduz o `ValidationException` em **400 ProblemDetails**
+  (`application/problem+json` + `errors` por campo), e os endpoints de escrita declaram esse
+  400 no OpenAPI via `[ProducesResponseType<HttpValidationProblemDetails>(400)]`.
+- **CQRS via IMessageBus**: endpoints finos mapeiam `Request → Command/Query` e despacham
+  pro Wolverine; a orquestração vive nos handlers da Application.
 - **Durabilidade EF Core (outbox transacional)**: `AddDbContextWithWolverineIntegration`
   + `UseEntityFrameworkCoreTransactions` + `Policies.AutoApplyTransactions`
   + `PersistMessagesWithPostgresql` + `UseDurableLocalQueues`. Os handlers **não** chamam

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using TodoApp.Api.Features.Todos.Contracts;
 using TodoApp.Application.Todos.Contracts;
 using TodoApp.Application.Todos.CreateTodo;
@@ -16,6 +18,7 @@ namespace TodoApp.Api.Features.Todos.CreateTodo;
 public static class CreateTodoEndpoint
 {
     [WolverinePost("/api/todos")]
+    [ProducesResponseType<HttpValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     public static async Task<CreationResponse<TodoResponse>> Handle(
         CreateTodoRequest request,
         IMessageBus bus,
