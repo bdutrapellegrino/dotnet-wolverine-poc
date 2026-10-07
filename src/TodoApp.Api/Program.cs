@@ -9,6 +9,7 @@ using TodoApp.Infrastructure;
 using TodoApp.Infrastructure.Persistence;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
+using Wolverine.FluentValidation;
 using Wolverine.Http;
 using Wolverine.Http.FluentValidation;
 using Wolverine.Postgresql;
@@ -35,6 +36,11 @@ builder.Host.UseWolverine(opts =>
     // so handlers never call SaveChanges themselves.
     opts.Policies.AutoApplyTransactions();
 
+    // Validate commands/queries as message middleware on EVERY dispatch through IMessageBus
+    // (HTTP, queue, cron, tests). The HTTP-boundary validation on the Request still gives the
+    // clean 400; this guards non-HTTP entry points.
+    opts.UseFluentValidation();
+
     // Route local (in-process) messages like TodoCompleted through the durable outbox.
     opts.Policies.UseDurableLocalQueues();
 });
@@ -50,9 +56,10 @@ builder.Services.AddInfrastructure();
 // Create Wolverine's message storage tables (and other stateful resources) on startup.
 builder.Services.AddResourceSetupOnStartup();
 
-// Request validators (CreateTodoValidator, UpdateTodoValidator, ...) live in THIS API assembly:
-// input is validated at the HTTP boundary, FastEndpoints-style.
+// Request validators live in the API assembly (validated at the HTTP boundary, FastEndpoints-style);
+// command validators live in the Application assembly (validated on the message bus).
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+builder.Services.AddValidatorsFromAssemblyContaining<AssemblyMarker>();
 
 // Wolverine.Http endpoint support.
 builder.Services.AddWolverineHttp();
@@ -94,6 +101,3 @@ app.MapWolverineEndpoints(opts =>
 app.MapGet("/", () => Results.Redirect("/scalar"));
 
 return await app.RunJasperFxCommands(args);
-
-// Exposed so integration tests (Alba/WebApplicationFactory) can boot the real host.
-public partial class Program;
